@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%232a78d6'/%3E%3C/svg%3E">
+<style>
+:root{
+  color-scheme: light dark;
+  --page:#f9f9f7; --surface:#fcfcfb;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --up:#006300; --down:#d03b3b;
+  --s1:#2a78d6; --s2:#1baf7a; --s3:#eda100; --s4:#008300;
+  --s5:#4a3aa7; --s6:#e34948; --s7:#e87ba4; --s8:#eb6834;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --page:#0d0d0d; --surface:#1a1a19;
+    --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --up:#0ca30c; --down:#d03b3b;
+    --s1:#3987e5; --s2:#199e70; --s3:#c98500; --s4:#008300;
+    --s5:#9085e9; --s6:#e66767; --s7:#d55181; --s8:#d95926;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--page); color:var(--ink);
+  font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+header{
+  flex:none; height:42px; display:flex; align-items:center;
+  justify-content:space-between; padding:0 16px;
+}
+#dash-title{
+  font-size:14px; font-weight:600; outline:none; border-radius:4px;
+  padding:2px 6px; margin-left:-6px; min-width:40px;
+}
+#dash-title:focus{background:var(--surface); box-shadow:0 0 0 1px var(--ring)}
+#clock{font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums}
+#grid{
+  flex:1; min-height:0; display:grid; gap:10px; padding:0 10px 10px;
+}
+.empty{
+  grid-column:1/-1; display:flex; align-items:center; justify-content:center;
+  color:var(--muted); font-size:13px;
+}
+.card{
+  position:relative; min-width:0; min-height:0; overflow:hidden;
+  background:var(--surface); border:1px solid var(--ring); border-radius:8px;
+  display:flex; flex-direction:column;
+  container-type:inline-size;
+}
+.card.dragging{opacity:.35}
+.card-head{
+  flex:none; display:flex; align-items:center; justify-content:center;
+  gap:8px; padding:10px 2px; padding-inline:clamp(14px, 13cqi, 84px);
+}
+.card-head .dot{width:8px; height:8px; border-radius:50%; flex:none}
+.card-head h2{
+  margin:0; font-size:clamp(13px, 8cqi, 19px); font-weight:650; color:var(--ink);
+  min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.card-body{flex:1; min-height:0; position:relative}
+svg.chart{
+  position:absolute; inset:0; width:100%; height:100%; display:block;
+  touch-action:none; user-select:none; -webkit-user-select:none;
+}
+svg.chart text{font:10.5px system-ui,-apple-system,"Segoe UI",sans-serif}
+.tick{fill:var(--muted); font-variant-numeric:tabular-nums}
+.axname{fill:var(--ink2); font-size:11px}
+.pt{opacity:0; transition:opacity .15s; cursor:ns-resize}
+.card:hover .pt, .card.pt-drag .pt{opacity:1}
+.dragv{
+  fill:var(--ink); font-size:11px; font-weight:600;
+  stroke:var(--surface); stroke-width:3px; paint-order:stroke;
+  font-variant-numeric:tabular-nums;
+}
+.pulse{transform-box:fill-box; transform-origin:center; animation:pulse 2.4s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.4);opacity:.45}70%{opacity:0}100%{transform:scale(2.6);opacity:0}}
+@media (prefers-reduced-motion: reduce){.pulse{animation:none;opacity:0}}
+.ticker{
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:4px; padding:0 12px;
+}
+.tk-v{
+  font-weight:600; white-space:nowrap; letter-spacing:-.01em; line-height:1.1;
+  /* equal-width digits: live updates don't jiggle, and the fit cache stays exact */
+  font-variant-numeric:tabular-nums;
+}
+.tk-d{font-size:14px; color:var(--ink2); min-height:20px}
+.tk-d.up{color:var(--up)}
+.tk-d.down{color:var(--down)}
+.tools{
+  position:absolute; top:7px; right:8px; display:flex; gap:2px;
+  opacity:0; transition:opacity .15s; z-index:6;
+}
+.card:hover .tools, .card.cfg-open .tools{opacity:1}
+.tb{
+  width:22px; height:22px; border:0; border-radius:5px; background:transparent;
+  color:var(--muted); font-size:13px; line-height:1; cursor:pointer; padding:0;
+}
+.tb:hover{background:var(--page); color:var(--ink)}
+.tb.grip{cursor:grab}
+.cfg{
+  position:absolute; top:32px; right:8px; z-index:7; width:236px;
+  background:var(--surface); border:1px solid var(--ring); border-radius:8px;
+  padding:10px 12px 12px; margin:0; display:none;
+  box-shadow:0 6px 24px rgba(0,0,0,.14);
+  max-height:calc(100% - 40px); overflow-y:auto; overscroll-behavior:contain;
+}
+.card.cfg-open .cfg{display:block}
+.cfg .row{display:flex; gap:8px}
+.cfg .f{display:block; flex:1; min-width:0; margin-top:7px}
+.cfg .f>span{display:block; font-size:10.5px; color:var(--muted); margin-bottom:2px}
+.cfg input[type=text], .cfg input[type=number], .cfg select{
+  width:100%; font:12px system-ui,-apple-system,"Segoe UI",sans-serif;
+  color:var(--ink); background:var(--page);
+  border:1px solid var(--grid); border-radius:4px; padding:3px 6px; outline:none;
+}
+.cfg input:focus, .cfg select:focus{border-color:var(--axis)}
+.cfg input:disabled{opacity:.45}
+.cfg .chk{display:flex; align-items:center; gap:6px; margin-top:12px}
+.cfg .chk>span{margin:0; font-size:11.5px; color:var(--ink2)}
+.cfg .chk input{margin:0}
+.sw{display:flex; gap:6px; margin-top:8px}
+.sw button{
+  width:15px; height:15px; border-radius:50%; border:0; cursor:pointer; padding:0;
+}
+.sw button.on{box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--muted)}
+#dock{
+  position:fixed; right:0; bottom:0; z-index:10; display:flex; gap:6px;
+  padding:26px 14px 14px 26px; opacity:0; transition:opacity .2s;
+}
+#dock:hover, #dock:focus-within{opacity:1}
+#dock button{
+  font:12px system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--ring); border-radius:6px;
+  padding:5px 10px; cursor:pointer;
+}
+#dock button:hover{color:var(--ink); border-color:var(--axis)}
+#toast{
+  position:fixed; left:50%; bottom:18px; transform:translateX(-50%) translateY(6px);
+  background:var(--ink); color:var(--surface); font-size:12px;
+  padding:6px 13px; border-radius:6px; opacity:0; transition:.25s; z-index:20;
+  pointer-events:none;
+}
+#toast.show{opacity:1; transform:translateX(-50%)}
+</style>
+</head>
+<body>
+
+<header>
+  <span id="dash-title" contenteditable="plaintext-only" spellcheck="false"></span>
+  <span id="clock"></span>
+</header>
+<main id="grid"></main>
+
+<div id="dock">
+  <button data-act="graph">+ Graph</button>
+  <button data-act="ticker">+ Ticker</button>
+  <button data-act="export">Export</button>
+  <button data-act="import">Import</button>
+</div>
+<input type="file" id="file-in" accept=".json,application/json" hidden>
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+const LSKEY = 'faux-dash-v1';
+const NSLOTS = 8;
+const $grid  = document.getElementById('grid');
+const $title = document.getElementById('dash-title');
+const $toastEl = document.getElementById('toast');
+const $fileIn = document.getElementById('file-in');
+
+const uid   = () => 'e' + Math.random().toString(36).slice(2, 9);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const hstep = n => Math.max(1, Math.ceil(n / 80)); // handle thinning for dense grown series
+const gauss = () => Math.random() + Math.random() + Math.random() - 1.5; // ~N(0, .5), bounded ±1.5
+const esc   = s => String(s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const num = (v, dflt, lo = -1e12, hi = 1e12) => {
+  v = typeof v === 'string' ? parseFloat(v) : v;
+  return Number.isFinite(v) ? clamp(v, lo, hi) : dflt;
+};
+
+/* ---------- state ---------- */
+
+function bounds(el){
+  if (el.yAuto && Array.isArray(el.pts) && el.pts.length){
+    let dlo = Infinity, dhi = -Infinity;
+    for (const v of el.pts){ if (v < dlo) dlo = v; if (v > dhi) dhi = v; }
+    if (Number.isFinite(dlo) && Number.isFinite(dhi)){
+      // pad, then snap to a nice gridline step so the axis reads clean
+      const pad = dhi > dlo ? (dhi - dlo) * 0.08 : Math.max(Math.abs(dhi) * 0.1, 1);
+      const lo = dlo - pad, hi = dhi + pad;
+      const step0 = (hi - lo) / 4;
+      const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+      const nrm = step0 / mag;
+      const step = (nrm < 1.5 ? 1 : nrm < 3 ? 2 : nrm < 3.5 ? 2.5 : nrm < 7.5 ? 5 : 10) * mag;
+      let min = Math.floor(lo / step) * step;
+      if (dlo >= 0 && min < 0) min = 0; // all-positive data keeps a zero floor
+      const max = Math.ceil(hi / step) * step;
+      // degenerate math (e.g. denormal-scale spans) falls back to the manual range
+      if (Number.isFinite(min) && Number.isFinite(max) && step > 0 && max > min)
+        return { min, max, step };
+    }
+  }
+  const min = el.yMin;
+  const max = el.yMax > el.yMin ? el.yMax : el.yMin + 1; // guard while user edits ranges
+  return { min, max };
+}
+
+function genPts(el){
+  const { min, max } = bounds(el), span = max - min;
+  let v = min + span * (0.35 + Math.random() * 0.3);
+  const pts = [];
+  for (let i = 0; i < el.n; i++){
+    v = clamp(v + span * 0.04 * gauss(), min + span * 0.05, max - span * 0.05);
+    pts.push(v);
+  }
+  return pts;
+}
+
+function resample(arr, m){
+  if (arr.length === m) return arr.slice();
+  if (arr.length < 2) return Array(m).fill(arr[0] ?? 0);
+  const out = [];
+  for (let k = 0; k < m; k++){
+    const t = k * (arr.length - 1) / (m - 1), i = Math.floor(t), f = t - i;
+    out.push(arr[i] * (1 - f) + (arr[Math.min(i + 1, arr.length - 1)] ?? arr[i]) * f);
+  }
+  return out;
+}
+
+function normalize(raw, slot){
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const base = {
+    id: uid(),
+    title: typeof r.title === 'string' ? r.title.slice(0, 80) : 'New metric',
+    color: num(r.color, slot % NSLOTS, 0, NSLOTS - 1) | 0,
+    tick:  num(r.tick, 1, 0.1, 120),
+    trend: num(r.trend, 0, -1e9, 1e9),
+    jitter: num(r.jitter, 1, 0, 1e9),
+    live: r.live !== false,
+  };
+  if (r.type === 'ticker'){
+    return Object.assign(base, {
+      type: 'ticker',
+      value: num(r.value, 100),
+      decimals: num(r.decimals, 0, 0, 4) | 0,
+      prefix: typeof r.prefix === 'string' ? r.prefix.slice(0, 8) : '',
+      suffix: typeof r.suffix === 'string' ? r.suffix.slice(0, 12) : '',
+    });
+  }
+  const el = Object.assign(base, {
+    type: 'graph',
+    yLabel: typeof r.yLabel === 'string' ? r.yLabel.slice(0, 40) : '',
+    xLabel: typeof r.xLabel === 'string' ? r.xLabel.slice(0, 40) : '',
+    yMin: num(r.yMin, 0), yMax: num(r.yMax, 100),
+    yAuto: r.yAuto === true,
+    xMin: num(r.xMin, 0), xMax: num(r.xMax, 60),
+    xFmt: ['number', 'time', 'date'].includes(r.xFmt) ? r.xFmt : 'number',
+    xGrow: r.xGrow === true,
+    n: num(r.n, 40, 2, 240) | 0,
+    brush: num(r.brush, 2, 0, 40),
+  });
+  const rawPts = Array.isArray(r.pts) && r.pts.length >= 2 && r.pts.every(Number.isFinite)
+    ? r.pts.map(v => clamp(v, -1e12, 1e12)) : null;
+  // grown series keep their accumulated length (up to the cap) instead of
+  // being resampled back to n, so grow-mode exports round-trip
+  el.pts = !rawPts ? genPts(el)
+    : el.xGrow ? (rawPts.length > 480 ? resample(rawPts, 480) : rawPts)
+    : resample(rawPts, el.n);
+  return el;
+}
+
+function defaultState(){
+  return {
+    title: 'Operations Overview',
+    els: [
+      normalize({ type:'graph', title:'Throughput', yLabel:'req/s',
+                  yMin:0, yMax:600, xMin:-6, xMax:0, xFmt:'time', trend:0.5, jitter:16 }, 0),
+      normalize({ type:'graph', title:'P95 latency', yLabel:'ms', xLabel:'minutes',
+                  yMin:0, yMax:240, xMin:-40, xMax:0, trend:0, jitter:8 }, 1),
+      normalize({ type:'ticker', title:'Active sessions', value:1284, trend:0.6, jitter:2.5 }, 2),
+    ],
+  };
+}
+
+function loadState(){
+  try {
+    const d = JSON.parse(localStorage.getItem(LSKEY));
+    if (!d || !Array.isArray(d.els)) return null;
+    return {
+      title: typeof d.title === 'string' ? d.title.slice(0, 120) : 'Dashboard',
+      els: d.els.slice(0, 40).map((e, i) => normalize(e, i)),
+    };
+  } catch { return null; }
+}
+
+let state = loadState() || defaultState();
+
+let saveTimer = null;
+const stripRuntime = (k, v) => k.startsWith('_') ? undefined : v;
+function saveNow(){
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  try { localStorage.setItem(LSKEY, JSON.stringify(state, stripRuntime)); } catch {}
+}
+function saveSoon(){
+  // non-resetting debounce: a steady stream of sim ticks must not starve the write
+  if (!saveTimer) saveTimer = setTimeout(saveNow, 800);
+}
+
+/* ---------- formatting ---------- */
+
+function fmtTick(v, span, step){
+  const a = Math.abs(v);
+  const st = Math.abs(step || 0) || Math.abs(span) / 4 || Math.max(a, 1);
+  const [unit, sfx] = a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : a >= 1e4 ? [1e3, 'K'] : [1, ''];
+  const sv = v / unit, sstep = st / unit;
+  // enough digits that values one step apart always read distinct
+  // (step 2.5 -> 1 digit, 0.25 -> 2, ...); extra allowance never pads integers
+  const d = Number.isFinite(sstep) && sstep > 0
+    ? clamp(Math.ceil(-Math.log10(sstep)) + 1, 0, 8) : 0;
+  return sv.toLocaleString('en-US', { maximumFractionDigits: d }) + sfx;
+}
+function fmtVal(v, dec){
+  return v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+const p2 = x => String(x).padStart(2, '0');
+function fmtX(el, v, span, step){
+  if (el.xFmt === 'time'){ // v = hours relative to now, clamped to ±100 years
+    const d = new Date(Date.now() + clamp(v, -876e3, 876e3) * 3600e3);
+    return p2(d.getHours()) + ':' + p2(d.getMinutes());
+  }
+  if (el.xFmt === 'date'){ // v = days relative to now, clamped to ±100 years
+    const d = new Date(Date.now() + clamp(v, -36500, 36500) * 86400e3);
+    return p2(d.getMonth() + 1) + '/' + p2(d.getDate()) + '/' + p2(d.getFullYear() % 100);
+  }
+  return fmtTick(v, span, step);
+}
+
+/* ---------- chart rendering ---------- */
+
+function renderChart(el){
+  const svg = el._svg, body = el._body;
+  if (!svg || !body) return;
+  const blank = () => { el._plot.innerHTML = ''; el._pulse.style.display = 'none'; el._geom = null; };
+  const W = body.clientWidth, H = body.clientHeight;
+  if (W < 60 || H < 50) return blank();
+
+  const { min, max, step } = bounds(el);
+  const span = max - min, n = el.pts.length;
+  const yTicks = step // auto mode: gridlines sit on nice step multiples
+    ? Array.from({ length: Math.round(span / step) + 1 }, (_, i) => min + i * step)
+    : [0, 1, 2, 3, 4].map(i => min + span * i / 4);
+  const yLbls  = yTicks.map(v => fmtTick(v, span, step));
+  const lblW   = Math.max(...yLbls.map(s => s.length)) * 6.3;
+  const L = 12 + lblW + (el.yLabel ? 17 : 0);
+  const B = 22 + (el.xLabel ? 15 : 0);
+  const T = 12, R = 14;
+  const w = W - L - R, h = H - T - B;
+  if (w < 20 || h < 20) return blank();
+
+  const X = i => L + (n === 1 ? w / 2 : i * w / (n - 1));
+  const Y = v => T + (1 - (v - min) / span) * h;
+  const r1 = x => Math.round(x * 10) / 10;
+  const col = `var(--s${el.color + 1})`;
+  const p = [];
+
+  p.push(`<defs><clipPath id="cl-${el.id}"><rect x="${L}" y="${T - 6}" width="${w}" height="${h + 6}"/></clipPath></defs>`);
+
+  // gridlines + y ticks
+  for (let i = 0; i < yTicks.length; i++){
+    const y = r1(Y(yTicks[i]));
+    p.push(`<line x1="${L}" y1="${y}" x2="${L + w}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`);
+    p.push(`<text class="tick" x="${L - 7}" y="${y + 3.5}" text-anchor="end">${yLbls[i]}</text>`);
+  }
+  // baseline
+  p.push(`<line x1="${L}" y1="${r1(T + h)}" x2="${L + w}" y2="${r1(T + h)}" stroke="var(--axis)" stroke-width="1"/>`);
+  // x ticks: the label count comes from the measured label width so labels
+  // never collide, and the first/last anchor inward so they can't clip
+  const xspan = el.xMax - el.xMin;
+  const xlw = Math.max(fmtX(el, el.xMin, xspan).length, fmtX(el, el.xMax, xspan).length) * 6.3;
+  const nx = w >= 6 * xlw + 40 ? 5 : w >= 3 * xlw + 20 ? 3 : w >= 2 * xlw + 10 ? 2 : 1;
+  for (let i = 0; i < nx; i++){
+    const f = nx === 1 ? 1 : i / (nx - 1);
+    const xv = el.xMin + xspan * f;
+    const ta = nx === 1 ? 'end' : i === 0 ? 'start' : i === nx - 1 ? 'end' : 'middle';
+    p.push(`<text class="tick" x="${r1(L + w * f)}" y="${T + h + 15}" text-anchor="${ta}">${fmtX(el, xv, xspan, nx > 1 ? xspan / (nx - 1) : xspan)}</text>`);
+  }
+  // axis names
+  if (el.yLabel)
+    p.push(`<text class="axname" transform="rotate(-90)" x="${-(T + h / 2)}" y="13" text-anchor="middle">${esc(el.yLabel)}</text>`);
+  if (el.xLabel)
+    p.push(`<text class="axname" x="${L + w / 2}" y="${H - 6}" text-anchor="middle">${esc(el.xLabel)}</text>`);
+
+  // area + line + markers, clipped to the plot area (points can sit out of range mid-edit)
+  const line = el.pts.map((v, i) => `${i ? 'L' : 'M'}${r1(X(i))},${r1(Y(v))}`).join('');
+  p.push(`<g clip-path="url(#cl-${el.id})">`);
+  p.push(`<path d="${line}L${r1(L + w)},${r1(T + h)}L${L},${r1(T + h)}Z" fill="${col}" opacity=".1"/>`);
+  p.push(`<path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+
+  // live dot on latest point
+  const lastV = el.pts[n - 1];
+  const lx = r1(X(n - 1)), ly = r1(Y(lastV));
+  p.push(`<circle cx="${lx}" cy="${ly}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`);
+
+  // drag handles (thinned when a grown series is dense)
+  const st = hstep(n);
+  const handle = i =>
+    p.push(`<circle class="pt" cx="${r1(X(i))}" cy="${r1(Y(el.pts[i]))}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`);
+  for (let i = 0; i < n; i += st) handle(i);
+  if ((n - 1) % st) handle(n - 1);
+  p.push('</g>');
+
+  // value readout while dragging
+  if (el._drag && el._drag.i < n){
+    const i = el._drag.i;
+    p.push(`<text class="dragv" x="${r1(X(i))}" y="${r1(Y(el.pts[i]) - 11)}" text-anchor="middle">${fmtTick(el.pts[i], span)}</text>`);
+  }
+
+  el._geom = { L, T, w, h, min, max, n };
+  el._plot.innerHTML = p.join('');
+
+  // the pulse is a persistent sibling so rebuilding the plot doesn't restart its animation
+  const pulse = el._pulse;
+  if (el.live && lastV >= min && lastV <= max){
+    pulse.setAttribute('cx', lx);
+    pulse.setAttribute('cy', ly);
+    pulse.setAttribute('fill', col);
+    pulse.style.display = '';
+  } else {
+    pulse.style.display = 'none';
+  }
+}
+
+/* ---------- ticker rendering ---------- */
+
+function renderTicker(el){
+  const body = el._body;
+  if (!body) return;
+  if (!body.firstChild)
+    body.innerHTML = '<div class="ticker"><div class="tk-v"></div><div class="tk-d"></div></div>';
+  const vEl = body.querySelector('.tk-v'), dEl = body.querySelector('.tk-d');
+
+  const text = el.prefix + fmtVal(el.value, el.decimals) + el.suffix;
+  vEl.textContent = text;
+  // fit the number to the card (text width scales linearly with font size);
+  // re-measure only when length or card size changes to avoid a forced reflow per tick
+  const fitKey = text.length + '/' + body.clientWidth + 'x' + body.clientHeight;
+  if (el._fitKey !== fitKey){
+    vEl.style.fontSize = '100px';
+    const wAt100 = vEl.scrollWidth || 1;
+    // height budget: 1.1*fs value line + 4px gap + 20px delta row must fit the body
+    const fs = Math.max(14, Math.min((body.clientHeight - 26) / 1.1, 100 * body.clientWidth * 0.92 / wAt100));
+    vEl.style.fontSize = fs.toFixed(1) + 'px';
+    el._fitKey = fitKey;
+  }
+
+  const d = el._delta;
+  if (d === undefined || !el.live){
+    dEl.textContent = el.live ? '' : 'paused';
+    dEl.className = 'tk-d';
+  } else {
+    const dec = Math.max(el.decimals, 1);
+    if (Math.abs(d) < Math.pow(10, -dec) / 2){ // rounds to zero — show as unchanged
+      dEl.textContent = '—';
+      dEl.className = 'tk-d';
+    } else {
+      dEl.textContent = (d >= 0 ? '▲ ' : '▼ ') + fmtVal(Math.abs(d), dec);
+      dEl.className = 'tk-d ' + (d >= 0 ? 'up' : 'down');
+    }
+  }
+}
+
+function renderBody(el){
+  el.type === 'graph' ? renderChart(el) : renderTicker(el);
+}
+
+/* ---------- config panel ---------- */
+
+function fld(label, k, type, value, attrs = ''){
+  return `<label class="f"><span>${label}</span>` +
+    `<input data-k="${k}" type="${type}" value="${esc(value)}" ${type === 'number' ? 'step="any"' : ''} ${attrs}></label>`;
+}
+function row(...fs){ return `<div class="row">${fs.join('')}</div>`; }
+function sel(label, k, opts, cur){
+  return `<label class="f"><span>${label}</span><select data-k="${k}">` +
+    opts.map(([v, t]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${t}</option>`).join('') +
+    '</select></label>';
+}
+function chk(label, k, on){
+  return `<label class="f chk"><span>${label}</span><input data-k="${k}" type="checkbox" ${on ? 'checked' : ''}></label>`;
+}
+
+function cfgHTML(el){
+  const sw = `<div class="f"><span>Color</span><div class="sw">` +
+    Array.from({ length: NSLOTS }, (_, i) =>
+      `<button type="button" data-c="${i}" class="${i === el.color ? 'on' : ''}" style="background:var(--s${i + 1})" aria-label="color ${i + 1}"></button>`
+    ).join('') + '</div></div>';
+  const common =
+    row(fld('Trend / tick', 'trend', 'number', el.trend), fld('Jitter', 'jitter', 'number', el.jitter, 'min="0"')) +
+    row(fld('Tick every (s)', 'tick', 'number', el.tick, 'min="0.1"'), chk('Live', 'live', el.live));
+  if (el.type === 'ticker'){
+    return fld('Title', 'title', 'text', el.title) +
+      row(fld('Value', 'value', 'number', el.value), fld('Decimals', 'decimals', 'number', el.decimals, 'min="0" max="4"')) +
+      row(fld('Prefix', 'prefix', 'text', el.prefix), fld('Suffix', 'suffix', 'text', el.suffix)) +
+      common + sw;
+  }
+  const xu = el.xFmt === 'time' ? ' (hours)' : el.xFmt === 'date' ? ' (days)' : '';
+  return fld('Title', 'title', 'text', el.title) +
+    row(fld('Y axis name', 'yLabel', 'text', el.yLabel), fld('X axis name', 'xLabel', 'text', el.xLabel)) +
+    row(fld('Y min', 'yMin', 'number', el.yMin, el.yAuto ? 'disabled' : ''),
+        fld('Y max', 'yMax', 'number', el.yMax, el.yAuto ? 'disabled' : '')) +
+    row(chk('Fit Y to data', 'yAuto', el.yAuto), chk('Grow axis', 'xGrow', el.xGrow)) +
+    row(sel('X labels', 'xFmt', [['number', 'Numbers'], ['time', 'Clock time'], ['date', 'Dates']], el.xFmt)) +
+    row(fld('X start' + xu, 'xMin', 'number', el.xMin), fld('X end' + xu, 'xMax', 'number', el.xMax)) +
+    row(fld('Points', 'n', 'number', el.n, 'min="2" max="240"'), fld('Drag falloff', 'brush', 'number', el.brush, 'min="0"')) +
+    common + sw;
+}
+
+function refreshCfg(el, card){
+  card.querySelectorAll('.cfg [data-k]').forEach(inp => {
+    if (inp === document.activeElement) return;
+    if (inp.type === 'checkbox') inp.checked = !!el[inp.dataset.k];
+    else if (inp.dataset.k === 'value') inp.value = +el.value.toFixed(Math.max(el.decimals, 2));
+    else inp.value = el[inp.dataset.k];
+  });
+  card.querySelectorAll('.sw button').forEach(b =>
+    b.classList.toggle('on', +b.dataset.c === el.color));
+}
+
+function applyCfg(el, card, inp){
+  const k = inp.dataset.k;
+  switch (k){
+    case 'title':  el.title = inp.value.slice(0, 80); break;
+    case 'yLabel': case 'xLabel': el[k] = inp.value.slice(0, 40); break;
+    case 'prefix': el.prefix = inp.value.slice(0, 8); break;
+    case 'suffix': el.suffix = inp.value.slice(0, 12); break;
+    case 'live':   el.live = inp.checked; break;
+    case 'value':  el.value = num(inp.value, el.value); break;
+    case 'decimals': el.decimals = num(inp.value, el.decimals, 0, 4) | 0; break;
+    case 'tick':   el.tick = num(inp.value, el.tick, 0.1, 120); el._acc = 0; break;
+    case 'trend':  el.trend = num(inp.value, el.trend, -1e9, 1e9); break;
+    case 'jitter': el.jitter = num(inp.value, el.jitter, 0, 1e9); break;
+    case 'brush':  el.brush = num(inp.value, el.brush, 0, 40); break;
+    case 'xMin':   el.xMin = num(inp.value, el.xMin); break;
+    case 'xMax':   el.xMax = num(inp.value, el.xMax); break;
+    // range edits never touch the data — out-of-range points are clipped
+    // visually and drift back into range as the simulation advances
+    case 'yMin': case 'yMax': el[k] = num(inp.value, el[k]); break;
+    case 'xGrow':
+      el.xGrow = inp.checked;
+      if (!el.xGrow) el.pts = resample(el.pts, el.n); // back to the configured resolution
+      break;
+    case 'yAuto': {
+      if (!inp.checked && el.yAuto){
+        // adopt the displayed range so turning auto off doesn't jump the axis
+        const b = bounds(el);
+        el.yMin = clamp(b.min, -1e12, 1e12);
+        el.yMax = clamp(b.max, -1e12, 1e12);
+      }
+      el.yAuto = inp.checked;
+      card.querySelectorAll('.cfg [data-k=yMin], .cfg [data-k=yMax]')
+        .forEach(f => f.disabled = el.yAuto);
+      refreshCfg(el, card);
+      break;
+    }
+    case 'xFmt': {
+      el.xFmt = ['number', 'time', 'date'].includes(inp.value) ? inp.value : 'number';
+      if (el.xFmt === 'time'){ el.xMin = -6; el.xMax = 0; }
+      else if (el.xFmt === 'date'){ el.xMin = -30; el.xMax = 0; }
+      const cfgEl = card.querySelector('.cfg');
+      cfgEl.innerHTML = cfgHTML(el); // relabel the X range fields
+      cfgEl.querySelector('select[data-k=xFmt]')?.focus(); // the rebuild dropped focus
+      break;
+    }
+    case 'n': {
+      const m = num(inp.value, el.n, 2, 240) | 0;
+      if (m !== el.n){
+        if (el._drag){ el._drag = null; card.classList.remove('pt-drag'); }
+        // a grown series keeps its accumulated history; n applies once grow is off
+        if (!el.xGrow) el.pts = resample(el.pts, m);
+        el.n = m;
+      }
+      break;
+    }
+  }
+  card.querySelector('.card-head h2').textContent = el.title;
+  renderBody(el);
+  saveSoon();
+}
+
+/* ---------- cards ---------- */
+
+let dragCard = null;  // card element being reordered
+let dragOrder = null; // grid order snapshot to restore on a cancelled drag
+
+function buildCard(el){
+  const card = document.createElement('section');
+  card.className = 'card';
+  card.dataset.id = el.id;
+  card.innerHTML =
+    `<div class="card-head"><span class="dot" style="background:var(--s${el.color + 1})"></span><h2>${esc(el.title)}</h2></div>` +
+    `<div class="card-body"></div>` +
+    `<div class="tools">` +
+      `<button class="tb grip" type="button" draggable="false" title="Drag to reorder">⠿</button>` +
+      `<button class="tb gear" type="button" title="Configure">⚙︎</button>` +
+      `<button class="tb del" type="button" title="Remove">✕</button>` +
+    `</div>` +
+    `<form class="cfg">${cfgHTML(el)}</form>`;
+
+  const body = card.querySelector('.card-body');
+  const cfg  = card.querySelector('.cfg');
+  el._body = body;
+
+  if (el.type === 'graph'){
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'chart');
+    svg.innerHTML = '<g class="plot"></g><circle class="pulse" r="5" style="display:none"/>';
+    body.appendChild(svg);
+    el._svg = svg;
+    el._plot = svg.querySelector('.plot');
+    el._pulse = svg.querySelector('.pulse');
+    wirePointDrag(el, svg, card);
+  }
+
+  // tools
+  card.querySelector('.gear').addEventListener('click', () => {
+    const open = card.classList.toggle('cfg-open');
+    if (open) refreshCfg(el, card);
+  });
+  card.querySelector('.del').addEventListener('click', () => removeEl(el.id));
+
+  // config editing
+  cfg.addEventListener('submit', e => e.preventDefault());
+  cfg.addEventListener('input', e => {
+    // 'n' resamples the series (destructive) — apply it only on commit
+    // ('change'), never per keystroke, so typing "45" can't pass through 4
+    if (e.target.dataset.k && e.target.dataset.k !== 'n') applyCfg(el, card, e.target);
+  });
+  cfg.addEventListener('change', e => {
+    if (e.target.dataset.k === 'n') applyCfg(el, card, e.target);
+  });
+  cfg.addEventListener('click', e => {
+    const b = e.target.closest('[data-c]');
+    if (!b) return;
+    el.color = +b.dataset.c;
+    refreshCfg(el, card);
+    card.querySelector('.card-head .dot').style.background = `var(--s${el.color + 1})`;
+    renderBody(el);
+    saveSoon();
+  });
+  // auto-hide: close when the pointer leaves the card (unless typing in it),
+  // and once typing ends anywhere off-card
+  card.addEventListener('mouseleave', () => {
+    card.draggable = false;
+    if (!cfg.contains(document.activeElement)) card.classList.remove('cfg-open');
+  });
+  cfg.addEventListener('focusout', () => setTimeout(() => {
+    if (!cfg.contains(document.activeElement) && !card.matches(':hover'))
+      card.classList.remove('cfg-open');
+  }, 0));
+
+  // reorder via grip (HTML5 drag & drop, enabled only from the grip)
+  const grip = card.querySelector('.grip');
+  grip.addEventListener('mousedown', e => { if (e.button === 0) card.draggable = true; });
+  grip.addEventListener('mouseup',   () => { card.draggable = false; });
+  card.addEventListener('dragstart', e => {
+    if (!card.draggable){ e.preventDefault(); return; }
+    dragCard = card;
+    dragOrder = [...$grid.children];
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', el.id);
+    requestAnimationFrame(() => card.classList.add('dragging'));
+  });
+  card.addEventListener('dragend', e => {
+    card.draggable = false;
+    card.classList.remove('dragging');
+    dragCard = null;
+    if (e.dataTransfer && e.dataTransfer.dropEffect === 'none' && dragOrder)
+      dragOrder.forEach(c => $grid.appendChild(c)); // cancelled — restore the original order
+    dragOrder = null;
+    syncOrder();
+  });
+
+  return card;
+}
+
+function wirePointDrag(el, svg, card){
+  svg.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || el._drag || !el._geom) return;
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const { L, T, w, h, min, max, n } = el._geom;
+    let best = -1, bd = 14 * 14;
+    const consider = i => {
+      const dx = L + (n === 1 ? w / 2 : i * w / (n - 1)) - mx;
+      const dy = T + (1 - (el.pts[i] - min) / (max - min)) * h - my;
+      const d = dx * dx + dy * dy;
+      if (d < bd){ bd = d; best = i; }
+    };
+    const st = hstep(n);
+    for (let i = 0; i < n; i += st) consider(i);
+    if ((n - 1) % st) consider(n - 1);
+    if (best < 0) return;
+    e.preventDefault();
+    svg.setPointerCapture(e.pointerId);
+    // g0 freezes the cursor->value mapping for the whole gesture: in auto-Y
+    // mode the axis refits under the drag, and deriving the target from the
+    // refitted geometry would feed back on itself and run away
+    el._drag = { i: best, snap: el.pts.slice(), pid: e.pointerId, g0: el._geom };
+    card.classList.add('pt-drag');
+    renderChart(el);
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!el._drag || !el._geom || e.pointerId !== el._drag.pid) return;
+    const { i: j, snap } = el._drag;
+    if (j >= el.pts.length || snap.length !== el.pts.length) return;
+    const rect = svg.getBoundingClientRect();
+    const my = e.clientY - rect.top;
+    const { T, h, min, max } = el._drag.g0;
+    // in auto-Y mode the drag isn't confined to the current view — the axis
+    // rescales live to follow the pulled point
+    const lo = el.yAuto ? -1e12 : min, hi = el.yAuto ? 1e12 : max;
+    const target = clamp(min + (1 - (my - T) / h) * (max - min), lo, hi);
+    // scale the falloff with handle spacing so a brush stroke stays visible on dense series
+    const s = el.brush * hstep(el.pts.length), dv = target - snap[j];
+    for (let i = 0; i < el.pts.length; i++){
+      const wgt = i === j ? 1 : (s > 0 ? Math.exp(-((i - j) ** 2) / (2 * s * s)) : 0);
+      el.pts[i] = clamp(snap[i] + dv * wgt, lo, hi);
+    }
+    renderChart(el);
+  });
+  const endDrag = e => {
+    if (!el._drag || e.pointerId !== el._drag.pid) return;
+    el._drag = null;
+    card.classList.remove('pt-drag');
+    renderChart(el);
+    saveSoon();
+  };
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+}
+
+/* ---------- grid ---------- */
+
+const ro = new ResizeObserver(entries => {
+  for (const en of entries){
+    const card = en.target.closest('.card');
+    const el = card && state.els.find(x => x.id === card.dataset.id);
+    if (el) renderBody(el);
+  }
+});
+
+function buildAll(){
+  ro.disconnect();
+  $grid.innerHTML = '';
+  if (!state.els.length){
+    $grid.innerHTML = '<div class="empty">Hover the bottom-right corner to add elements</div>';
+  } else {
+    for (const el of state.els){
+      $grid.appendChild(buildCard(el));
+      ro.observe(el._body);
+    }
+  }
+  layout();
+  state.els.forEach(renderBody);
+}
+
+function layout(){
+  const cards = [...$grid.querySelectorAll('.card')];
+  const n = Math.max(cards.length, 1);
+  const w = $grid.clientWidth || 1, h = $grid.clientHeight || 1;
+  let best = 1, bs = Infinity;
+  for (let c = 1; c <= n; c++){
+    const r = Math.ceil(n / c);
+    const score = Math.abs((w / c) / (h / r) - 1.6) + (c * r - n) * 0.08;
+    if (score < bs){ bs = score; best = c; }
+  }
+  const rows = Math.ceil(n / best);
+  $grid.style.gridTemplateColumns = `repeat(${best}, 1fr)`;
+  $grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+  // an incomplete last row leaves a hole — stretch the final card across it
+  cards.forEach(c => { c.style.gridColumn = ''; });
+  const leftover = best * rows - n;
+  if (cards.length && leftover > 0)
+    cards[cards.length - 1].style.gridColumn = `span ${leftover + 1}`;
+}
+
+function syncOrder(){
+  const order = [...$grid.querySelectorAll('.card')].map(c => c.dataset.id);
+  state.els.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  layout();
+  saveSoon();
+}
+
+$grid.addEventListener('dragover', e => {
+  if (!dragCard) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const over = e.target.closest('.card');
+  if (!over || over === dragCard) return;
+  const cards = [...$grid.children];
+  if (cards.indexOf(over) > cards.indexOf(dragCard)) over.after(dragCard);
+  else over.before(dragCard);
+});
+$grid.addEventListener('drop', e => { if (dragCard) e.preventDefault(); });
+
+/* ---------- add / remove ---------- */
+
+function addEl(type){
+  const el = normalize({ type, title: type === 'ticker' ? 'New ticker' : 'New metric' },
+                       state.els.length);
+  state.els.push(el);
+  buildAll();
+  saveSoon();
+}
+
+function removeEl(id){
+  state.els = state.els.filter(e => e.id !== id);
+  buildAll();
+  saveSoon();
+}
+
+/* ---------- import / export ---------- */
+
+function doExport(){
+  const json = JSON.stringify(state, stripRuntime, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = 'dashboard-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Layout exported');
+}
+
+async function doImport(file){
+  try {
+    const d = JSON.parse(await file.text());
+    if (!d || !Array.isArray(d.els)) throw new Error('bad shape');
+    state = {
+      title: typeof d.title === 'string' ? d.title.slice(0, 120) : 'Dashboard',
+      els: d.els.slice(0, 40).map((e, i) => normalize(e, i)),
+    };
+    $title.textContent = state.title;
+    buildAll();
+    saveSoon();
+    toast(d.els.length > 40 ? 'Layout imported (capped at 40 elements)' : 'Layout imported');
+  } catch {
+    toast('Couldn’t import: not a valid layout file');
+  }
+}
+
+$fileIn.addEventListener('change', () => {
+  if ($fileIn.files[0]) doImport($fileIn.files[0]);
+  $fileIn.value = '';
+});
+
+document.getElementById('dock').addEventListener('click', e => {
+  const act = e.target.dataset.act;
+  if (act === 'graph' || act === 'ticker') addEl(act);
+  else if (act === 'export') doExport();
+  else if (act === 'import') $fileIn.click();
+});
+
+/* ---------- simulation ---------- */
+
+// one simulation step == one data point == one tick: the value moves by
+// trend + noise regardless of how long a tick lasts, so changing the tick
+// interval changes animation speed only — never the visual slope
+function stepEl(el){
+  const drift = el.trend + el.jitter * gauss();
+  if (el.type === 'ticker'){
+    // _delta is set by the sim loop across the whole batch, not per step
+    el.value = clamp(el.value + drift, -1e15, 1e15);
+  } else {
+    let next;
+    if (el.yAuto){
+      // unconfined drift — the axis follows the data rather than reflecting it
+      next = clamp(el.pts[el.pts.length - 1] + drift, -1e12, 1e12);
+    } else {
+      const { min, max } = bounds(el);
+      const span = max - min;
+      // start from the last point (pulled into range if a range edit left it outside),
+      // bound the step to one span so the soft reflect can never overshoot the far bound
+      const last = clamp(el.pts[el.pts.length - 1], min, max);
+      next = last + clamp(drift, -span, span);
+      if (next > max) next = max - (next - max);
+      else if (next < min) next = min + (min - next);
+      next = clamp(next, min, max);
+    }
+    if (el.xGrow){
+      // extend the axis by one point-spacing and keep the whole history,
+      // halving resolution once it gets dense; time/date axes grow leftward
+      // since their right edge is anchored to "now"
+      const xspan = el.xMax - el.xMin;
+      const unit = xspan > 0 ? xspan / Math.max(el.pts.length - 1, 1) : 1;
+      if (el.xFmt === 'number') el.xMax = clamp(el.xMax + unit, -1e12, 1e12);
+      else el.xMin = clamp(el.xMin - unit, -1e12, 1e12);
+      el.pts.push(next);
+      if (el.pts.length > 480)
+        el.pts = el.pts.filter((_, i) => i % 2 === 0 || i === el.pts.length - 1);
+    } else {
+      el.pts.push(next);
+      el.pts.shift();
+    }
+  }
+}
+
+let simLast = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  const dt = Math.min((now - simLast) / 1000, 5); // throttled background tabs don't fast-forward
+  simLast = now;
+  let mutated = false;
+  for (const el of state.els){
+    if (!el.live || el._drag) continue;
+    el._acc = (el._acc || 0) + dt;
+    if (el._acc < el.tick) continue;
+    // fixed cadence: one step per elapsed tick (small cap — a long stall
+    // shouldn't dump a burst of points), rendered once at the end
+    let steps = Math.min(Math.floor(el._acc / el.tick), 8);
+    el._acc = steps >= 8 ? 0 : el._acc - steps * el.tick;
+    const before = el.type === 'ticker' ? el.value : 0;
+    while (steps--) stepEl(el);
+    // the delta spans the whole batch so it always matches the value shown
+    if (el.type === 'ticker') el._delta = el.value - before;
+    renderBody(el);
+    mutated = true;
+  }
+  if (mutated) saveSoon();
+}, 100);
+
+/* ---------- header ---------- */
+
+$title.textContent = state.title;
+$title.addEventListener('input', () => {
+  state.title = $title.textContent.slice(0, 120);
+  saveSoon();
+});
+$title.addEventListener('keydown', e => {
+  if (e.key === 'Enter'){ e.preventDefault(); $title.blur(); }
+});
+
+const $clock = document.getElementById('clock');
+let clockN = 0;
+function tickClock(){
+  $clock.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+  // clock-anchored x labels drift with real time — refresh them periodically
+  if (++clockN % 30 === 0)
+    for (const el of state.els)
+      if (el.type === 'graph' && el.xFmt !== 'number' && !el._drag) renderChart(el);
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape')
+    document.querySelectorAll('.card.cfg-open').forEach(c => c.classList.remove('cfg-open'));
+});
+
+/* ---------- misc ---------- */
+
+let toastTimer = null;
+function toast(msg){
+  $toastEl.textContent = msg;
+  $toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $toastEl.classList.remove('show'), 2200);
+}
+
+window.addEventListener('resize', layout);
+window.addEventListener('pagehide', saveNow); // flush the pending debounce on close/navigation
+
+buildAll();
+</script>
+</body>
+</html>
