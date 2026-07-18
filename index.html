@@ -853,6 +853,7 @@ async function doImport(file){
       els: d.els.slice(0, 40).map((e, i) => normalize(e, i)),
     };
     $title.textContent = state.title;
+    applyTitle();
     buildAll();
     saveSoon();
     toast(d.els.length > 40 ? 'Layout imported (capped at 40 elements)' : 'Layout imported');
@@ -943,9 +944,14 @@ setInterval(() => {
 
 /* ---------- header ---------- */
 
+function applyTitle(){
+  document.title = state.title.trim() || 'Dashboard';
+}
 $title.textContent = state.title;
+applyTitle();
 $title.addEventListener('input', () => {
   state.title = $title.textContent.slice(0, 120);
+  applyTitle();
   saveSoon();
 });
 $title.addEventListener('keydown', e => {
